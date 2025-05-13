@@ -1,0 +1,43 @@
+name: Require CR Approval Before Merge
+
+on:
+  pull_request:
+    branches:
+      - main
+    types: [opened, edited, reopened, synchronize]
+
+jobs:
+  check-linked-issue:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v3
+
+    - name: Check for approved linked issue
+      uses: actions/github-script@v7
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        script: |
+          const pr = context.payload.pull_request;
+          const issueRegex = /#(\d+)/;
+          const match = issueRegex.exec(pr.body);
+
+          if (!match) {
+            core.setFailed("❌ PR must mention a linked issue like 'Closes #12'");
+            return;
+          }
+
+          const issueNumber = parseInt(match[1]);
+          const issue = await github.rest.issues.get({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: issueNumber
+          });
+
+          const hasApprovedLabel = issue.data.labels.some(label => label.name.toLowerCase() === "approved");
+
+          if (!hasApprovedLabel) {
+            core.setFailed(`❌ Linked issue #${issueNumber} is not labeled 'approved'. Please wait for Change Manager approval.`);
+          } else {
+            console.log(`✅ Linked issue #${issueNumber} is approved.`);
+          }
